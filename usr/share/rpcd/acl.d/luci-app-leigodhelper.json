@@ -1,0 +1,18 @@
+{
+    "luci-app-leigodhelper": {
+        "description": "Grant access to leigodhelper configuration",
+        "read": {
+            "cgi-bin": [
+                "luci/admin/services/leigodhelper/get_data",
+                "luci/admin/services/leigodhelper/status",
+                "luci/admin/services/leigodhelper/get_log",
+                "luci/admin/services/leigodhelper/clear_log",
+                "luci/admin/services/leigodhelper/install"
+            ],
+            "uci": [ "leigodhelper" ]
+        },
+        "write": {
+            "uci": [ "leigodhelper" ]
+        }
+    }
+}

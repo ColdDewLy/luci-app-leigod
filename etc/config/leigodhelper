@@ -1,0 +1,18 @@
+config leigodhelper 'main'
+	option enabled '0'
+	option check_interval '5'
+	option notify_idle '0'
+	option idle_threshold '30'
+	option tg_enabled '0'
+	option tg_token ''
+	option tg_chatid ''
+	option bark_enabled '0'
+	option bark_key ''
+	option wecom_enabled '0'
+	option wecom_key ''
+	option conflict_svc 'none'
+
+config device
+	option mac ''
+	option ip ''
+	option type 'pc'

@@ -1,0 +1,42 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+
+USE_PROCD=1
+PROG=/usr/bin/leigodhelper_sync.sh
+
+start_service() {
+    config_load leigodhelper
+    config_get_bool enabled main enabled 0
+
+    [ "$enabled" -eq 1 ] || return 0
+
+    procd_open_instance
+    procd_set_param command /bin/bash "$PROG"
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_set_param respawn
+    procd_close_instance
+}
+
+service_triggers() {
+    procd_add_reload_trigger "leigodhelper"
+}
+
+install() {
+    echo "Starting Leigod installation..."
+    curl -fsSL http://119.3.40.126/router_plugin_new/plugin_install.sh -o /tmp/plugin_install.sh
+    if [ $? -eq 0 ]; then
+        sh /tmp/plugin_install.sh 2>&1
+    else
+        echo "Failed to download installation script"
+    fi
+}
+
+# The sync script cleans up after itself on SIGTERM/exit,
+# but we can explicitly call a cleanup if needed.
+stop_service() {
+    # Clean up firewall rules and IPSETs before stopping
+    /bin/bash /usr/bin/leigodhelper_sync.sh stop
+}

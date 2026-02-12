@@ -1,0 +1,13 @@
+{
+    "admin/services/leigodhelper": {
+        "title": "雷神加速器",
+        "action": {
+            "type": "view",
+            "path": "leigodhelper/main"
+        },
+        "order": 60,
+        "depends": {
+            "acl": [ "luci-app-leigodhelper" ]
+        }
+    }
+}
