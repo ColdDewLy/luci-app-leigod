@@ -197,14 +197,18 @@ return view.extend({
         so.rmempty = false;
         if (data && data.neighbors) {
             for (var i = 0; i < data.neighbors.length; i++) {
-                so.value(data.neighbors[i].ip, '%s (%s)'.format(data.neighbors[i].ip, data.neighbors[i].mac));
+                var displayStr = (data.neighbors[i].hostname && data.neighbors[i].hostname !== '') ? 
+                    '%s (%s) [%s]'.format(data.neighbors[i].ip, data.neighbors[i].mac, data.neighbors[i].hostname) :
+                    '%s (%s)'.format(data.neighbors[i].ip, data.neighbors[i].mac);
+                so.value(data.neighbors[i].ip, displayStr);
             }
         }
 
         so = ss.option(form.ListValue, 'type', '设备类型');
+        so.value('auto', '自动识别');
         so.value('pc', 'PC');
         so.value('console', '主机');
-        so.default = 'pc';
+        so.default = 'auto';
 
         // Log Tab
         o = s.taboption('log', form.DummyValue, '_log_view');

@@ -22,6 +22,13 @@ IDLE_START_TIME=0
 LAST_BYTES=0
 NOTIFICATION_SENT=false
 
+# 加速时长检测状态变量
+ACCEL_START_TIME=0
+ACCEL_DURATION_NOTIFIED=false
+
+# 状态变化日志追踪
+PREV_STATUS="unknown"
+
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
 }
@@ -252,17 +259,35 @@ sync_task() {
 # Load config
 config_load leigodhelper
 
-handle_device() {
-    local cfg="$1"
-    local ip type
-    config_get ip "$cfg" ip
-    config_get type "$cfg" type
-    if [ "$type" == "pc" ]; then
-        LIST_PC="$LIST_PC $ip"
-    elif [ "$type" == "console" ]; then
-        LIST_CONSOLE="$LIST_CONSOLE $ip"
-    fi
-}
+    guess_device_type() {
+        local ip=$1
+        local mac=$2
+        
+        if [ -n "$mac" ] && [ -f "/tmp/dhcp.leases" ]; then
+            local hostname=$(grep -i "$mac" /tmp/dhcp.leases | awk '{print $4}' | tr 'A-Z' 'a-z')
+            if [ -n "$hostname" ] && [ "$hostname" != "*" ]; then
+                if echo "$hostname" | grep -qE "xbox|playstation|ps4|ps5|nintendo|switch|steamdeck"; then
+                    echo "console"
+                    return
+                fi
+            fi
+        fi
+        
+        if [ -n "$mac" ] && [ -f "/usr/share/leigodhelper/console_oui.txt" ]; then
+            local oui=$(echo "$mac" | cut -d':' -f1-3 | tr 'a-z' 'A-Z')
+            if grep -q "$oui" "/usr/share/leigodhelper/console_oui.txt"; then
+                echo "console"
+                return
+            fi
+        fi
+        
+        echo "pc"
+    }
+
+    handle_device_stop() {
+        local cfg="$1"
+        # stop command doesn't need to sort devices into PC or Console precisely
+    }
 
 config_get_bool enabled main enabled 0
 if [ "$enabled" -eq 0 ]; then
@@ -270,7 +295,7 @@ if [ "$enabled" -eq 0 ]; then
 fi
 
 config_get CHECK_INTERVAL main check_interval 5
-config_foreach handle_device device
+# config_foreach handle_device_stop device
 
 if [ "$1" == "stop" ]; then
     config_load leigodhelper
@@ -323,7 +348,15 @@ while true; do
             ip=$(get_ip_from_mac "$mac")
         fi
 
+        if [ -z "$mac" ] && [ -n "$ip" ]; then
+            mac=$(ip neigh show | grep -w "$ip" | awk '{print $5}' | head -n 1)
+        fi
+
         if [ -n "$ip" ]; then
+            if [ "$type" == "auto" ] || [ -z "$type" ]; then
+                type=$(guess_device_type "$ip" "$mac")
+            fi
+
             if [ "$type" == "pc" ]; then
                 LIST_PC="$LIST_PC $ip"
             elif [ "$type" == "console" ]; then
@@ -339,9 +372,20 @@ while true; do
     status_pc=$(check_leishen_status "$TUN_PC" "$IPSET_PC")
 
     if [ "$status_console" != "off" ] || [ "$status_pc" != "off" ]; then
+        cur_status="on"
         control_conflict_svc "true"
     else
+        cur_status="off"
         control_conflict_svc "false"
+    fi
+
+    if [ "$cur_status" != "$PREV_STATUS" ]; then
+        if [ "$cur_status" = "on" ]; then
+            log "加速器已开启 (console=$status_console pc=$status_pc)"
+        else
+            log "加速器已关闭"
+        fi
+        PREV_STATUS="$cur_status"
     fi
 
     sync_task "$LIST_CONSOLE" "$TUN_CONSOLE" "$IPSET_CONSOLE" "$MARK_CONSOLE"
@@ -379,6 +423,24 @@ while true; do
             LAST_BYTES=0
             NOTIFICATION_SENT=false
         fi
+    fi
+
+    # 加速时长超限通知
+    if [ "$status_console" != "off" ] || [ "$status_pc" != "off" ]; then
+        current_time=$(date +%s)
+        if [ "$ACCEL_START_TIME" -eq 0 ]; then
+            ACCEL_START_TIME=$current_time
+            ACCEL_DURATION_NOTIFIED=false
+        fi
+        accel_duration=$((current_time - ACCEL_START_TIME))
+        if [ "$accel_duration" -ge 28800 ] && [ "$ACCEL_DURATION_NOTIFIED" = false ]; then
+            accel_hours=$((accel_duration / 3600))
+            send_notification "加速器已持续开启超过 ${accel_hours} 小时，请确认是否仍需加速。"
+            ACCEL_DURATION_NOTIFIED=true
+        fi
+    else
+        ACCEL_START_TIME=0
+        ACCEL_DURATION_NOTIFIED=false
     fi
 
     sleep "$CHECK_INTERVAL"

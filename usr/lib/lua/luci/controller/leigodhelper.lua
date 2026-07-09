@@ -91,14 +91,29 @@ function action_get_data()
         data.interfaces = sys.net.devices()
     end
 
+    -- Parse DHCP leases for hostnames
+    local leases = {}
+    local f_leases = io.open("/tmp/dhcp.leases", "r")
+    if f_leases then
+        for line in f_leases:lines() do
+            local ts, mac, ip, name, clientid = line:match("^(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)")
+            if mac and name and name ~= "*" then
+                leases[mac:upper()] = name
+            end
+        end
+        f_leases:close()
+    end
+
     -- Get neighbors (ARP table)
     if sys.net and sys.net.arptable then
         local arp = sys.net.arptable()
         for _, entry in ipairs(arp) do
             if entry["HW address"] and entry["IP address"] then
+                local mac_upper = entry["HW address"]:upper()
                 table.insert(data.neighbors, {
                     mac = entry["HW address"],
-                    ip  = entry["IP address"]
+                    ip  = entry["IP address"],
+                    hostname = leases[mac_upper] or ""
                 })
             end
         end
@@ -110,7 +125,8 @@ function action_get_data()
             for line in f:lines() do
                 local ip, hw, fl, mac, mask, dev = line:match("(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)")
                 if ip and mac and mac ~= "00:00:00:00:00:00" then
-                    table.insert(data.neighbors, { mac = mac, ip = ip })
+                    local mac_upper = mac:upper()
+                    table.insert(data.neighbors, { mac = mac, ip = ip, hostname = leases[mac_upper] or "" })
                 end
             end
             f:close()
