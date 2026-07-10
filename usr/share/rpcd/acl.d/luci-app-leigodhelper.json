@@ -7,7 +7,9 @@
                 "luci/admin/services/leigodhelper/status",
                 "luci/admin/services/leigodhelper/get_log",
                 "luci/admin/services/leigodhelper/clear_log",
-                "luci/admin/services/leigodhelper/install"
+                "luci/admin/services/leigodhelper/install",
+                "luci/admin/services/leigodhelper/switch_mode",
+                "luci/admin/services/leigodhelper/get_switch_log"
             ],
             "uci": [ "leigodhelper" ]
         },

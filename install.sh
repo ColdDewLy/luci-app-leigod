@@ -24,6 +24,7 @@ mkdir -p /www/luci-static/resources/view/leigodhelper
 # 下载文件
 echo "正在下载文件..."
 curl -fsSL ${GITHUB_RAW}/usr/bin/leigodhelper_sync.sh -o /usr/bin/leigodhelper_sync.sh
+curl -fsSL ${GITHUB_RAW}/usr/bin/leigodhelper_switch_mode.sh -o /usr/bin/leigodhelper_switch_mode.sh
 curl -fsSL ${GITHUB_RAW}/etc/init.d/leigodhelper -o /etc/init.d/leigodhelper
 curl -fsSL ${GITHUB_RAW}/etc/config/leigodhelper -o /etc/config/leigodhelper
 curl -fsSL ${GITHUB_RAW}/usr/share/luci/menu.d/luci-app-leigodhelper.json -o /usr/share/luci/menu.d/luci-app-leigodhelper.json
@@ -32,6 +33,7 @@ curl -fsSL ${GITHUB_RAW}/www/luci-static/resources/view/leigodhelper/main.js -o 
 
 # 设置权限
 chmod +x /usr/bin/leigodhelper_sync.sh
+chmod +x /usr/bin/leigodhelper_switch_mode.sh
 chmod +x /etc/init.d/leigodhelper
 
 # 初始化服务

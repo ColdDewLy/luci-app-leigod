@@ -11,9 +11,9 @@ function getData() {
         if (res.status === 200) {
             return res.json();
         }
-        return { running: false, mode: 'OFF', interfaces: [], neighbors: [] };
+        return { running: false, mode: 'OFF', switch_mode: '', interfaces: [], neighbors: [] };
     }).catch(function() {
-        return { running: false, mode: 'OFF', interfaces: [], neighbors: [] };
+        return { running: false, mode: 'OFF', switch_mode: '', interfaces: [], neighbors: [] };
     });
 }
 
@@ -96,6 +96,90 @@ function handleInstall() {
     ui.showModal('新版雷神加速器插件安装', [ modalBody ]);
 }
 
+function handleSwitchMode(currentMode) {
+    var logScrollInterval;
+
+    // 目标模式 = 与当前相反；无法识别当前模式时默认切到 tun
+    var target = (currentMode === 'TUN') ? 'tproxy' : 'tun';
+    var targetLabel = (target === 'tun') ? 'TUN' : 'TProxy';
+    var curLabel = (currentMode && currentMode !== 'OFF') ? currentMode : '未知/未加速';
+
+    var tip = (target === 'tun')
+        ? '切换到 TUN 模式会停止雷神加速服务、修改启动脚本，并通过 opkg 安装 TUN 依赖包（需保证联网及软件源可用），最后重启服务。'
+        : '切换到 TProxy 模式会停止雷神加速服务、修改启动脚本并重启服务（无需安装依赖）。';
+
+    var modalBody = E('div', { class: 'modal-body' }, [
+        E('p', {}, '当前加速模式：' + curLabel),
+        E('p', {}, tip),
+        E('div', { class: 'left' }, [
+            E('button', {
+                class: 'btn cbi-button-action',
+                click: function(ev) {
+                    var btn = ev.target;
+                    btn.disabled = true;
+                    btn.innerText = '正在启动...';
+
+                    var postData = 'mode=' + encodeURIComponent(target);
+
+                    request.post(L.url('admin/services/leigodhelper/switch_mode'), postData, {
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                    }).then(function(res) {
+                        if (res.status === 200) {
+                            var logArea = E('pre', {
+                                style: 'max-height: 400px; overflow-y: auto; background: #000; color: #0f0; padding: 10px; border: 1px solid #333; font-family: monospace; white-space: pre-wrap; font-size: 12px; margin-top: 10px;'
+                            }, '正在初始化日志...');
+
+                            modalBody.innerHTML = '';
+                            modalBody.appendChild(E('h4', {}, '切换日志（切换到 ' + targetLabel + '）'));
+                            modalBody.appendChild(logArea);
+
+                            var closeBtn = E('button', {
+                                class: 'btn cbi-button-neutral',
+                                click: function() {
+                                    if (logScrollInterval) clearInterval(logScrollInterval);
+                                    ui.hideModal();
+                                }
+                            }, '关闭');
+                            modalBody.appendChild(E('div', { class: 'right', style: 'margin-top: 10px;' }, [ closeBtn ]));
+
+                            logScrollInterval = setInterval(function() {
+                                request.get(L.url('admin/services/leigodhelper/get_switch_log')).then(function(logRes) {
+                                    if (logRes.status === 200) {
+                                        var atBottom = (logArea.scrollHeight - logArea.scrollTop - logArea.clientHeight) < 20;
+                                        var oldScrollTop = logArea.scrollTop;
+
+                                        logArea.innerText = logRes.responseText;
+
+                                        if (atBottom) {
+                                            logArea.scrollTop = logArea.scrollHeight;
+                                        } else {
+                                            logArea.scrollTop = oldScrollTop;
+                                        }
+
+                                        // 检测到结束标记后停止轮询
+                                        if (/===切换(成功|失败)===/.test(logRes.responseText)) {
+                                            if (logScrollInterval) clearInterval(logScrollInterval);
+                                        }
+                                    }
+                                });
+                            }, 1000);
+                        } else {
+                            ui.addNotification(null, E('p', '切换接口调用失败。'), 'error');
+                            ui.hideModal();
+                        }
+                    });
+                }
+            }, '切换到 ' + targetLabel),
+            E('button', {
+                class: 'btn',
+                click: function() { ui.hideModal(); }
+            }, '取消')
+        ])
+    ]);
+
+    ui.showModal('切换加速模式', [ modalBody ]);
+}
+
 return view.extend({
     load: function() {
         return getData();
@@ -125,7 +209,20 @@ return view.extend({
                     E('button', {
                         class: 'btn cbi-button-apply',
                         click: handleInstall
-                    }, '新版雷神加速器插件安装')
+                    }, '新版雷神加速器插件安装'),
+                    E('button', {
+                        class: 'btn cbi-button-action',
+                        style: 'margin-left: 8px;',
+                        click: function(ev) {
+                            var btn = ev.target;
+                            btn.disabled = true;
+                            // 点击时重新拉取最新模式，避免使用 render 时的旧快照
+                            getData().then(function(res) {
+                                btn.disabled = false;
+                                handleSwitchMode(res.switch_mode || res.mode);
+                            });
+                        }
+                    }, '切换加速模式 (TProxy/TUN)')
                 ])
             ]);
         };

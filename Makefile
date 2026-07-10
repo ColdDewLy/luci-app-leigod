@@ -28,6 +28,7 @@ endef
 define Package/luci-app-leigodhelper/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./usr/bin/leigodhelper_sync.sh $(1)/usr/bin/
+	$(INSTALL_BIN) ./usr/bin/leigodhelper_switch_mode.sh $(1)/usr/bin/
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./etc/init.d/leigodhelper $(1)/etc/init.d/

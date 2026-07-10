@@ -10,6 +10,77 @@ function index()
     entry({"admin", "services", "leigodhelper", "get_log"}, call("action_get_log")).leaf = true
     entry({"admin", "services", "leigodhelper", "get_install_log"}, call("action_get_install_log")).leaf = true
     entry({"admin", "services", "leigodhelper", "clear_log"}, call("action_clear_log")).leaf = true
+    entry({"admin", "services", "leigodhelper", "switch_mode"}, call("action_switch_mode")).leaf = true
+    entry({"admin", "services", "leigodhelper", "get_switch_log"}, call("action_get_switch_log")).leaf = true
+end
+
+function action_switch_mode()
+    local http = require "luci.http"
+    local sys  = require "luci.sys"
+    local json = require "luci.jsonc"
+
+    local mode = http.formvalue("mode")
+
+    if not mode or mode == "" then
+        local body = http.content()
+        if body and body ~= "" then
+            local ok, payload = pcall(json.parse, body)
+            if ok and payload and payload.mode then
+                mode = payload.mode
+            elseif body:match("^mode=") then
+                mode = body:match("mode=([^&]+)")
+            end
+        end
+    end
+
+    local function append_switch_log(message)
+        local f = io.open("/tmp/leigodhelper_switch.log", "a")
+        if f then
+            f:write(message .. "\n")
+            f:close()
+        end
+    end
+
+    local function reset_switch_log(message)
+        local f = io.open("/tmp/leigodhelper_switch.log", "w")
+        if f then
+            f:write(message .. "\n")
+            f:close()
+        end
+    end
+
+    -- 入口即写日志，便于前端立即看到反馈与诊断
+    reset_switch_log("[controller] switch_mode 调用, mode=" .. tostring(mode))
+
+    -- 白名单校验，杜绝命令注入
+    if mode ~= "tun" and mode ~= "tproxy" then
+        append_switch_log("[controller] 非法模式，已中止 (mode=" .. tostring(mode) .. ")")
+        http.prepare_content("application/json")
+        http.write('{"status":"error","message":"invalid mode"}')
+        return
+    end
+
+    -- Run switch command in background
+    local cmd = 'sh /usr/bin/leigodhelper_switch_mode.sh ' .. mode .. ' >> /tmp/leigodhelper_switch.log 2>&1 &'
+    sys.exec(cmd)
+
+    http.prepare_content("application/json")
+    http.write('{"status":"success"}')
+end
+
+function action_get_switch_log()
+    local http = require "luci.http"
+    local sys = require "luci.sys"
+
+    local log_file = "/tmp/leigodhelper_switch.log"
+    local content = sys.exec("tail -n 500 " .. log_file .. " 2>/dev/null")
+
+    http.prepare_content("text/plain")
+    if content == "" then
+        http.write("Waiting for switch log...\n")
+    else
+        http.write(content)
+    end
 end
 
 function action_install()
@@ -76,6 +147,7 @@ function action_get_data()
     local data = {
         running = false,
         mode = "OFF",
+        switch_mode = "",
         interfaces = {},
         neighbors = {}
     }
@@ -133,7 +205,7 @@ function action_get_data()
         end
     end
 
-    -- Detect Mode
+    -- Detect active acceleration mode from interfaces/rules.
     local has_tun = false
     if sys.exec("ip addr show tun_Game 2>/dev/null") ~= "" or sys.exec("ip addr show tun_PC 2>/dev/null") ~= "" then
         has_tun = true
@@ -146,6 +218,16 @@ function action_get_data()
         if ipt and ipt:find("TPROXY") then
             data.mode = "TProxy"
         end
+    end
+
+    -- Detect configured acc mode for the switch button, even when no active task exists.
+    local acc_line = sys.exec("grep '10.20.30.40' /etc/init.d/acc 2>/dev/null | head -n 1")
+    local acc_ps = sys.exec("ps w | grep '[a]cc-gw.router' 2>/dev/null")
+    local mode_source = (acc_line or "") .. "\n" .. (acc_ps or "")
+    if mode_source:find("%-m%s+tun") then
+        data.switch_mode = "TUN"
+    elseif mode_source:find("%-m%s+tproxy") then
+        data.switch_mode = "TProxy"
     end
 
     http.prepare_content("application/json")
