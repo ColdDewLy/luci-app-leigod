@@ -205,13 +205,31 @@ function action_get_data()
         end
     end
 
-    -- Detect active acceleration mode from interfaces/rules.
-    local has_tun = false
-    if sys.exec("ip addr show tun_Game 2>/dev/null") ~= "" or sys.exec("ip addr show tun_PC 2>/dev/null") ~= "" then
-        has_tun = true
+    local acc_ps = sys.exec("ps w | grep '[a]cc-gw.router' 2>/dev/null")
+
+    local function process_options(line)
+        local options = {}
+        -- Match flags only at token boundaries; executable names contain '-' too.
+        for option, value in line:gmatch("%s(%-%S+)%s+(%S+)") do
+            options[option] = value
+        end
+        return options
     end
 
-    if has_tun then
+    local function has_active_tun_process(processes)
+        for line in (processes or ""):gmatch("[^\r\n]+") do
+            local options = process_options(line)
+            if line:find("/acc%-gw%.router[^%s]*")
+                and options["-r"] == "acc"
+                and options["-m"] == "tun" then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- The persistent "-r web -m tun" process is not an active acceleration task.
+    if has_active_tun_process(acc_ps) then
         data.mode = "TUN"
     else
         local ipt = sys.exec("iptables -t mangle -S GAMEACC 2>/dev/null")
@@ -222,8 +240,17 @@ function action_get_data()
 
     -- Detect configured acc mode for the switch button, even when no active task exists.
     local acc_line = sys.exec("grep '10.20.30.40' /etc/init.d/acc 2>/dev/null | head -n 1")
-    local acc_ps = sys.exec("ps w | grep '[a]cc-gw.router' 2>/dev/null")
-    local mode_source = (acc_line or "") .. "\n" .. (acc_ps or "")
+    local mode_source = acc_line or ""
+    if mode_source == "" then
+        for line in (acc_ps or ""):gmatch("[^\r\n]+") do
+            local options = process_options(line)
+            if line:find("/acc%-gw%.router[^%s]*") and options["-r"] == "daemon" then
+                mode_source = line
+                break
+            end
+        end
+    end
+
     if mode_source:find("%-m%s+tun") then
         data.switch_mode = "TUN"
     elseif mode_source:find("%-m%s+tproxy") then
